@@ -36,6 +36,17 @@ int end_option(const char * opt) {
   return 0;
 }
 
+FILE *log_init() {
+  FILE * ret = fopen("tftfs.log", "w");
+  if (!ret) {
+    perror("Openning log file failed ");
+    return NULL;
+  }
+
+  setlinebuf(ret);
+  return ret;
+}
+
 union curlparam get_option_param(const char * param_name, enum opttype type, GHashTable *params) {
   union curlparam param;
   long *ret;

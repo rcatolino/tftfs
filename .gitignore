@@ -3,3 +3,4 @@ bin/
 .*.swp
 fuse-tutorial*
 test/
+tftfs.log

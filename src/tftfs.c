@@ -8,38 +8,49 @@
 #include "http.h"
 #include "utils.h"
 
+#define tft_handle ((struct tft_data*) fuse_get_context()->private_data)
+#define fuse_debug(...) log_debug(tft_handle->log, __VA_ARGS__)
+
 int tft_open(const char *path, struct fuse_file_info *info) {
+  fuse_debug("tft_open called\n");
   return 0;
 }
 
 int tft_read(const char *path, char *buf, size_t buf_size, off_t offset,
 		         struct fuse_file_info *info) {
+  fuse_debug("tft_read called\n");
   return 0;
 }
 
 int tft_write(const char *path, const char *buf, size_t buf_size, off_t offset,
 		          struct fuse_file_info *info) {
+  fuse_debug("tft_write called\n");
   return 0;
 }
 
 int tft_flush(const char *path, struct fuse_file_info *info) {
+  fuse_debug("tft_flush called\n");
   return 0;
 }
 
 int tft_opendir(const char *path, struct fuse_file_info *info) {
+  fuse_debug("tft_opendir called\n");
   return 0;
 }
 
 int tft_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 			          struct fuse_file_info *info) {
+  fuse_debug("tft_readdir called\n");
   return 0;
 }
 
 void *tft_init(struct fuse_conn_info *conn) {
-  return NULL;
+  fuse_debug("tft_init called\n");
+  return tft_handle;
 }
 
 void tft_destroy(void *buff) {
+  fuse_debug("tft_destroy called\n");
 }
 
 static struct fuse_operations callbacks = {
@@ -82,8 +93,10 @@ static struct fuse_operations callbacks = {
 
 int main(int argc, char *argv[]) {
 
-  struct http_data *hhandle = http_init(&argc, &argv);
-  if (!hhandle) {
+  struct tft_data *private_data = malloc(sizeof(struct tft_data));
+  private_data->log = log_init();
+  private_data->hhandle = http_init(&argc, &argv);
+  if (!private_data->hhandle) {
     return 1;
   }
 
@@ -92,7 +105,7 @@ int main(int argc, char *argv[]) {
     return 2;
   }
 
-  if (!hhandle) {
+  if (!private_data->hhandle) {
     printf("Invalid url : %s.\n", argv[1]);
     return 3;
   }
@@ -101,7 +114,5 @@ int main(int argc, char *argv[]) {
   argv++;
   argc--;
   debug("%d, %s %s\n", argc, argv[0], argv[1]);
-  //fuse_main(argc, argv, &callbacks, NULL);
-
-  return 0;
+  return fuse_main(argc, argv, &callbacks, private_data);
 }
