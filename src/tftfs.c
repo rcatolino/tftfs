@@ -1,9 +1,11 @@
 #define FUSE_USE_VERSION 26
+
 #include <fuse.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "http.h"
 #include "utils.h"
 
 int tft_open(const char *path, struct fuse_file_info *info) {
@@ -80,19 +82,26 @@ static struct fuse_operations callbacks = {
 
 int main(int argc, char *argv[]) {
 
-  if (argc < 3) {
-    printf("Error, you need to specify a tree url and a mount point on the local filesystem.%d\n",argc);
+  struct http_data *hhandle = http_init(&argc, &argv);
+  if (!hhandle) {
     return 1;
-  } else if (!isdir(argv[2])) {
+  }
+
+  if (!isdir(argv[2])) {
     printf("Error, %s is not a valid directory\n", argv[2]);
     return 2;
+  }
+
+  if (!hhandle) {
+    printf("Invalid url : %s.\n", argv[1]);
+    return 3;
   }
 
   argv[1] = argv[0];
   argv++;
   argc--;
   debug("%d, %s %s\n", argc, argv[0], argv[1]);
-  fuse_main(argc, argv, &callbacks, NULL);
+  //fuse_main(argc, argv, &callbacks, NULL);
 
   return 0;
 }

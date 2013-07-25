@@ -4,13 +4,13 @@ AR:=ar
 CC:=gcc #Compiler
 EDL:=gcc #Linker
 ARFLAGS:=rcs
-CCFLAGS:=-Wall -g -std=gnu99 `pkg-config fuse glib-2.0 --cflags` #Compiler options
-EDLFLAGS:=-Wall -g `pkg-config fuse glib-2.0 --libs` #Linker options
+CCFLAGS:=-Wall -g -std=gnu99 `pkg-config fuse libcurl glib-2.0 --cflags` #Compiler options
+EDLFLAGS:=-Wall -g `pkg-config fuse libcurl glib-2.0 --libs` #Linker options
 EXE:=$(OBJDIR)/tftfs
 DEFINES:=-D DEBUG #Preprocessor definitions
 ECHO:=@echo
 
-OBJ:=$(OBJDIR)/tftfs.o $(OBJDIR)/utils.o
+OBJ:=$(OBJDIR)/tftfs.o $(OBJDIR)/utils.o $(OBJDIR)/http.o
 
 .PHONY: all clean
 
