@@ -9,4 +9,6 @@
 
 int isdir(char * path);
 
+void print_help_head();
+
 #endif

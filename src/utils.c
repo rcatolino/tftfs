@@ -4,6 +4,12 @@
 
 #include "utils.h"
 
+void print_help_head() {
+  printf("Example: to mount http://thefiletree.com/example/ at ./tft use :\n"
+         "\n"
+         " tftfs http://thefiletree.com/example/ tft");
+}
+
 int isdir(char * path) {
   struct stat stats;
   if (stat(path, &stats) == -1) {
