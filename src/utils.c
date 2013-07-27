@@ -53,6 +53,7 @@ union curlparam get_option_param(const char * param_name, enum opttype type, GHa
   switch (type) {
     case STRING :
       param.strparam = param_name;
+      debug("option value : %s\n", param_name);
       break;
     case LONG :
       ret = g_hash_table_lookup(params, param_name);

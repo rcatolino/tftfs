@@ -10,7 +10,7 @@ EXE:=$(OBJDIR)/tftfs
 DEFINES:=-D DEBUG #Preprocessor definitions
 ECHO:=@echo
 
-OBJ:=$(OBJDIR)/tftfs.o $(OBJDIR)/utils.o $(OBJDIR)/http.o
+OBJ:=$(OBJDIR)/tftfs.o $(OBJDIR)/utils.o $(OBJDIR)/http.o $(OBJDIR)/connections.o
 
 .PHONY: all clean
 

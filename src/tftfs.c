@@ -1,15 +1,39 @@
 #define FUSE_USE_VERSION 26
 
 #include <fuse.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "http.h"
 #include "utils.h"
 
-#define tft_handle ((struct tft_data*) fuse_get_context()->private_data)
-#define fuse_debug(...) log_debug(tft_handle->log, __VA_ARGS__)
+int tft_getattr(const char *path, struct stat * buf) {
+  struct http_connection *con = NULL;
+  fuse_debug("tft_getattr called, stat : %p, pid : %d, thread id : %lu\n", buf, getpid(), pthread_self());
+  con = get(tft_handle->hpool, path);
+  buf->st_mode = 0;
+  buf->st_mode |= get_file_type(con); // Will be direcory or regular
+  buf->st_mode |= S_IRWXU | S_IRWXG | S_IRWXO; // get_file_mode(hres); When perm are implemented
+
+  buf->st_nlink = 1; // No hardlinking on tft IIRC.
+
+  buf->st_uid = 1000; // No owner either (so far).
+
+  buf->st_gid = 1000; // No goup concept either.
+
+  buf->st_size = get_file_size(con);
+  release(con, tft_handle->hpool);
+
+  buf->st_atime = 0;
+  buf->st_mtime = 0;
+  buf->st_ctime = 0; // Yeah no one's really been active since the 70's...
+
+  buf->st_blocks = 0; // It doesn't take any room on the local drive.
+  return 0;
+}
 
 int tft_open(const char *path, struct fuse_file_info *info) {
   fuse_debug("tft_open called\n");
@@ -34,7 +58,7 @@ int tft_flush(const char *path, struct fuse_file_info *info) {
 }
 
 int tft_opendir(const char *path, struct fuse_file_info *info) {
-  fuse_debug("tft_opendir called\n");
+  fuse_debug("tft_opendir called, path : %s\n", path);
   return 0;
 }
 
@@ -54,7 +78,7 @@ void tft_destroy(void *buff) {
 }
 
 static struct fuse_operations callbacks = {
-  //.getattr = tft_getattr,
+  .getattr = tft_getattr,
   //.readlink = tft_readlink,
   //.getdir = tft_getdir,
   //.mknod = tft_mknod,
@@ -95,8 +119,8 @@ int main(int argc, char *argv[]) {
 
   struct tft_data *private_data = malloc(sizeof(struct tft_data));
   private_data->log = log_init();
-  private_data->hhandle = http_init(&argc, &argv);
-  if (!private_data->hhandle) {
+  private_data->hpool = http_init(&argc, &argv);
+  if (!private_data->hpool) {
     return 1;
   }
 
@@ -105,7 +129,7 @@ int main(int argc, char *argv[]) {
     return 2;
   }
 
-  if (!private_data->hhandle) {
+  if (!private_data->hpool) {
     printf("Invalid url : %s.\n", argv[1]);
     return 3;
   }

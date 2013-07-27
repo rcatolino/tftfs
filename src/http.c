@@ -1,10 +1,11 @@
 #include <assert.h>
-#include <curl/curl.h>
 #include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
+#include "connections.h"
 #include "http.h"
 #include "utils.h"
 
@@ -21,7 +22,19 @@
                                               strcpy(hkey, key);\
                                               g_hash_table_insert(options, hkey, hvalue)
 
-GHashTable * init_http_parameters() {
+static size_t writefunction(char *buf, size_t blck_size, size_t nmemb, void *userdata) {
+  return blck_size*nmemb;
+}
+
+static size_t print_header_callback(char *buf, size_t blck_size, size_t nmemb, void *unused) {
+  debug("%.*s", (int)(blck_size*nmemb), buf);
+  if (strncmp(buf, "HTTP/", blck_size*nmemb)) {
+  }
+  return blck_size*nmemb;
+}
+
+
+static GHashTable * init_http_parameters() {
   GHashTable * params = g_hash_table_new_full(g_str_hash,
                                                g_str_equal,
                                                (GDestroyNotify)free,
@@ -35,7 +48,7 @@ GHashTable * init_http_parameters() {
   return params;
 }
 
-GHashTable * init_http_options() {
+static GHashTable * init_http_options() {
   GHashTable * options = g_hash_table_new_full(g_str_hash,
                                                g_str_equal,
                                                (GDestroyNotify)free,
@@ -53,14 +66,30 @@ GHashTable * init_http_options() {
   return options;
 }
 
-struct http_data *http_init(int *argc, char *(*argv[])) {
-  struct http_data *data = NULL;
+static char * normalize(char *url) {
+  // For now this just removes any trailing '/'
+  // I guess this should probably collapse any '../'
+  // as well, but it might not really be useful.
+  if (strlen(url) == 0) {
+    return url;
+  }
+
+  if (url[strlen(url)-1] == '/') {
+    url[strlen(url)-1] = '\0';
+  }
+
+  return url;
+}
+
+struct connection_pool *http_init(int *argc, char *(*argv[])) {
+  struct http_connection *data = NULL;
   CURL * curl;
   int targc = *argc;
   char **targv = *argv;
   CURLcode req_res;
   GHashTable * options;
   GHashTable * parameters;
+  long curl_response;
 
   int ret = curl_global_init(CURL_GLOBAL_ALL);
   if (ret != 0) {
@@ -92,6 +121,7 @@ struct http_data *http_init(int *argc, char *(*argv[])) {
 
       co = g_hash_table_lookup(options, targv[i]+2);
       assert(co);
+      debug("option name : %s,\n", targv[i]);
       param = get_option_param(targv[i+1], co->type, parameters);
       if (param.longparam == -1) {
         printf("Invalid argument %s for option %s\n", targv[i+1], targv[i]);
@@ -102,6 +132,7 @@ struct http_data *http_init(int *argc, char *(*argv[])) {
       // We just consumed two args :
       *argc -= 2;
       *argv += 2;
+      i++; // do not treat the next arg, it was a option argument
     } else {
       // End of options
       break;
@@ -117,18 +148,30 @@ struct http_data *http_init(int *argc, char *(*argv[])) {
   }
 
   curl_easy_setopt(curl, CURLOPT_URL, (*argv)[1]);
+  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
+  curl_easy_setopt(curl, CURLOPT_NOBODY, 1);
+  curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, print_header_callback);
   // Test that the url is valid and that we can connect
   req_res = curl_easy_perform(curl);
   if (req_res != CURLE_OK) {
-    printf("could not connect to %s : %s\n", (*argv)[1], curl_easy_strerror(req_res));
+    printf("Could not connect to %s : %s\n", (*argv)[1], curl_easy_strerror(req_res));
     goto err;
   }
 
-  data = malloc(sizeof(struct http_data));
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &curl_response);
+  if (curl_response != 200) {
+    printf("HTTP Error %ld\n", curl_response);
+    goto err;
+  }
+
+  data = malloc(sizeof(struct http_connection));
   data->curl = curl;
+  data->root_url = malloc(strlen((*argv)[1]));
+  strcpy(data->root_url, normalize((*argv)[1]));
+  data->last_result.buffer = malloc(DEFAULT_RES_SIZE);
   g_hash_table_unref(parameters);
   g_hash_table_unref(options);
-  return data;
+  return create_pool(data);
 
 err:
   g_hash_table_unref(parameters);
@@ -138,12 +181,50 @@ err:
   return NULL;
 }
 
-void http_cleanup(struct http_data *data) {
+void http_cleanup(struct http_connection *data) {
   if (!data) {
     return;
   }
 
   curl_easy_cleanup(data->curl);
-  curl_global_cleanup();
   free(data);
+}
+
+static void prepare_request(struct http_connection *con, const char *local_path) {
+  char url[strlen(con->root_url) + strlen(local_path) + 1];
+  url[0] = '\0';
+  strcat(strcat(url, con->root_url), local_path);
+  fuse_debug("Preparing request to %s\n", url);
+  // TODO : make several handles for simultaneous requests
+  curl_easy_setopt(con->curl, CURLOPT_URL, url);
+  curl_easy_setopt(con->curl, CURLOPT_WRITEDATA, con->last_result.buffer);
+  curl_easy_setopt(con->curl, CURLOPT_WRITEFUNCTION, writefunction);
+  curl_easy_setopt(con->curl, CURLOPT_HTTPGET, 1);
+}
+
+struct http_connection *get(struct connection_pool *pool, const char *local_path) {
+  struct http_connection *con = acquire_connection(pool); // May block until a connection is
+                                                          // available. This connection must be
+                                                          // released to the pool using release()
+  prepare_request(con, local_path);
+  curl_easy_perform(con->curl);
+  return con;
+}
+
+mode_t get_file_type(struct http_connection *con) {
+  return S_IFDIR;
+}
+off_t get_file_size(struct http_connection *con) {
+  double size = 0;
+  curl_easy_getinfo(con->curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &size);
+  if (size == -1) {
+    size = curl_easy_getinfo(con->curl, CURLINFO_SIZE_DOWNLOAD, &size);
+  }
+
+  fuse_debug("get_file_size : %ld\n", (off_t)size);
+  return (off_t)size;
+}
+
+void release(struct http_connection *con, struct connection_pool* pool) {
+  release_connection(con, pool);
 }
