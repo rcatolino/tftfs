@@ -8,12 +8,17 @@
 #define DEFAULT_POOL_SIZE 5
 
 struct http_result {
-  char * buffer;
+  char *effective_url;
+  char *buffer;
 };
 
 struct http_connection {
-  CURL * curl;
-  char * root_url;
+  CURL *curl;
+  char *root_url; // Contains the whole url as passed in by the user,
+                  // in the form '[scheme://]host/root_path'
+  char *host; // Contains the '[scheme://]host' part of the root_url.
+  char *root_path; // Contains the 'root_path' part of the url.
+                   // The same buffer as root_url's is used.
   struct http_result last_result;
 };
 

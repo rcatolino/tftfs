@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "connections.h"
 #include "http.h"
@@ -35,9 +36,12 @@ struct connection_pool *create_pool(struct http_connection *initial) {
   pool->queue[0] = initial;
   for (int i = 1; i<DEFAULT_POOL_SIZE; i++) {
     pool->queue[i] = malloc(sizeof(struct http_connection));
+    // Copy the whole struct :
+    memcpy(pool->queue[i], initial, sizeof(struct http_connection));
+    // Update the relevant fields :
     pool->queue[i]->curl = curl_easy_duphandle(initial->curl);
-    pool->queue[i]->root_url = initial->root_url;
     pool->queue[i]->last_result.buffer = malloc(DEFAULT_RES_SIZE);
+    pool->queue[i]->last_result.effective_url = NULL;
   }
 
   return pool;

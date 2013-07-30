@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "http.h"
+#include "tft.h"
 #include "utils.h"
 
 int tft_getattr(const char *path, struct stat * buf) {
@@ -20,12 +21,12 @@ int tft_getattr(const char *path, struct stat * buf) {
 
   buf->st_nlink = 1; // No hardlinking on tft IIRC.
 
-  buf->st_uid = 1000; // No owner either (so far).
+  buf->st_uid = getuid(); // No owner either (so far).
 
-  buf->st_gid = 1000; // No goup concept either.
+  buf->st_gid = getgid(); // No goup concept either.
 
   buf->st_size = get_file_size(con);
-  release(con, tft_handle->hpool);
+  release(tft_handle->hpool, con);
 
   buf->st_atime = 0;
   buf->st_mtime = 0;
@@ -64,7 +65,8 @@ int tft_opendir(const char *path, struct fuse_file_info *info) {
 
 int tft_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 			          struct fuse_file_info *info) {
-  fuse_debug("tft_readdir called\n");
+  fuse_debug("tft_readdir called : %s\n", path);
+  tree_readdir(tft_handle->hpool, path);
   return 0;
 }
 

@@ -1,3 +1,4 @@
+#define _GNU_SOURCE 1
 #include <assert.h>
 #include <glib.h>
 #include <stdio.h>
@@ -23,13 +24,12 @@
                                               g_hash_table_insert(options, hkey, hvalue)
 
 static size_t writefunction(char *buf, size_t blck_size, size_t nmemb, void *userdata) {
+  fuse_debug("%.*s", (int)(blck_size*nmemb), buf);
   return blck_size*nmemb;
 }
 
 static size_t print_header_callback(char *buf, size_t blck_size, size_t nmemb, void *unused) {
   debug("%.*s", (int)(blck_size*nmemb), buf);
-  if (strncmp(buf, "HTTP/", blck_size*nmemb)) {
-  }
   return blck_size*nmemb;
 }
 
@@ -90,6 +90,7 @@ struct connection_pool *http_init(int *argc, char *(*argv[])) {
   GHashTable * options;
   GHashTable * parameters;
   long curl_response;
+  int scheme_head = 0;
 
   int ret = curl_global_init(CURL_GLOBAL_ALL);
   if (ret != 0) {
@@ -147,6 +148,21 @@ struct connection_pool *http_init(int *argc, char *(*argv[])) {
     goto err;
   }
 
+  // Verify that the url is http/https :
+#define strn(a) a, sizeof(a)-1
+  if (strncmp((*argv)[1], strn("http://")) == 0) {
+    scheme_head = sizeof("http://") - 1;
+  } else if (strncmp((*argv)[1], strn("https://")) == 0) {
+    scheme_head = sizeof("https://") - 1;
+  } else if (strstr((*argv)[1], "://") == NULL) {
+    scheme_head = 0;
+  } else {
+    char delim = ':';
+    printf("Error, unsuported protocol : %s.\n", strtok((*argv)[1], &delim));
+    goto err;
+  }
+
+  debug("Connecting to %s\n", (*argv)[1]);
   curl_easy_setopt(curl, CURLOPT_URL, (*argv)[1]);
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
   curl_easy_setopt(curl, CURLOPT_NOBODY, 1);
@@ -168,9 +184,18 @@ struct connection_pool *http_init(int *argc, char *(*argv[])) {
   data->curl = curl;
   data->root_url = malloc(strlen((*argv)[1]));
   strcpy(data->root_url, normalize((*argv)[1]));
+  data->root_path = strchrnul(data->root_url+scheme_head, '/');
+#define host_size() data->root_path - data->root_url + 1
+  data->host = malloc(host_size());
+  memcpy(data->host, data->root_url, host_size());
+  data->host[host_size() - 1] = '\0';
   data->last_result.buffer = malloc(DEFAULT_RES_SIZE);
+  data->last_result.effective_url = NULL;
+  curl_easy_setopt(data->curl, CURLOPT_WRITEDATA, data->last_result.buffer);
   g_hash_table_unref(parameters);
   g_hash_table_unref(options);
+
+  debug("root_url : %s, root_path : %s, host : %s, host_end : %u, host_size : %ld.\n", data->root_url, data->root_path, data->host, data->host[host_size()-1], host_size());
   return create_pool(data);
 
 err:
@@ -197,9 +222,33 @@ static void prepare_request(struct http_connection *con, const char *local_path)
   fuse_debug("Preparing request to %s\n", url);
   // TODO : make several handles for simultaneous requests
   curl_easy_setopt(con->curl, CURLOPT_URL, url);
-  curl_easy_setopt(con->curl, CURLOPT_WRITEDATA, con->last_result.buffer);
   curl_easy_setopt(con->curl, CURLOPT_WRITEFUNCTION, writefunction);
   curl_easy_setopt(con->curl, CURLOPT_HTTPGET, 1);
+}
+
+struct http_connection *post(struct connection_pool *pool, const char *action, const char *data) {
+  struct http_connection *con = acquire_connection(pool);
+  // Construct post url :
+  int host_length;
+  host_length = strlen(con->host);
+  if (con->last_result.effective_url) {
+    free(con->last_result.effective_url);
+  }
+
+  con->last_result.effective_url = malloc(strlen(action) + host_length + 3);
+  memset(con->last_result.effective_url, 0, strlen(action) + host_length + 3);
+  strcat(con->last_result.effective_url, con->host);
+  strcat(con->last_result.effective_url, "/$");
+  strcat(con->last_result.effective_url, action);
+  fuse_debug("sending %s to %s.\n", data, con->last_result.effective_url);
+
+  // Set curl options
+  curl_easy_setopt(con->curl, CURLOPT_URL, con->last_result.effective_url);
+  curl_easy_setopt(con->curl, CURLOPT_WRITEFUNCTION, writefunction);
+  curl_easy_setopt(con->curl, CURLOPT_POSTFIELDS, data);
+  curl_easy_setopt(con->curl, CURLOPT_POST, 1);
+  curl_easy_perform(con->curl);
+  return con;
 }
 
 struct http_connection *get(struct connection_pool *pool, const char *local_path) {
@@ -214,6 +263,7 @@ struct http_connection *get(struct connection_pool *pool, const char *local_path
 mode_t get_file_type(struct http_connection *con) {
   return S_IFDIR;
 }
+
 off_t get_file_size(struct http_connection *con) {
   double size = 0;
   curl_easy_getinfo(con->curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &size);
@@ -225,6 +275,6 @@ off_t get_file_size(struct http_connection *con) {
   return (off_t)size;
 }
 
-void release(struct http_connection *con, struct connection_pool* pool) {
+void release(struct connection_pool* pool, struct http_connection *con) {
   release_connection(con, pool);
 }
