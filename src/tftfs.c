@@ -1,5 +1,7 @@
 #define FUSE_USE_VERSION 26
 
+#include <assert.h>
+#include <errno.h>
 #include <fuse.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -12,27 +14,38 @@
 #include "utils.h"
 
 int tft_getattr(const char *path, struct stat * buf) {
-  struct http_connection *con = NULL;
+  // TODO: cache the result for a few sec
+  int ret;
   fuse_debug("tft_getattr called, stat : %p, pid : %d, thread id : %lu\n", buf, getpid(), pthread_self());
-  con = get(tft_handle->hpool, path);
-  buf->st_mode = 0;
-  buf->st_mode |= get_file_type(con); // Will be direcory or regular
-  buf->st_mode |= S_IRWXU | S_IRWXG | S_IRWXO; // get_file_mode(hres); When perm are implemented
-
+  // Prefill the stat struct with the values not set in the tree fs.
   buf->st_nlink = 1; // No hardlinking on tft IIRC.
-
   buf->st_uid = getuid(); // No owner either (so far).
-
   buf->st_gid = getgid(); // No goup concept either.
-
-  buf->st_size = get_file_size(con);
-  release(tft_handle->hpool, con);
-
-  buf->st_atime = 0;
-  buf->st_mtime = 0;
-  buf->st_ctime = 0; // Yeah no one's really been active since the 70's...
-
   buf->st_blocks = 0; // It doesn't take any room on the local drive.
+
+  // Perform a tree request to get the rest.
+  ret = tree_getattr(tft_handle->hpool, path, buf);
+  switch (ret) {
+    case -1:
+      return -EHOSTUNREACH;
+    case -2:
+      return -EBADMSG;
+    case 200:
+      break;
+    case 401:
+      return -EACCES;
+    case 404:
+      return -ENOENT;
+    case 500:
+      return -EBADE;
+  }
+
+  if (buf->st_size < 0) {
+    // This indicate that the file doesn't exist
+    buf->st_size = 0;
+    return -ENOENT;
+  }
+
   return 0;
 }
 
@@ -59,14 +72,45 @@ int tft_flush(const char *path, struct fuse_file_info *info) {
 }
 
 int tft_opendir(const char *path, struct fuse_file_info *info) {
-  fuse_debug("tft_opendir called, path : %s\n", path);
+  fuse_debug("tft_opendir called, path : %s, info : %p\n", path, info);
   return 0;
 }
 
 int tft_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 			          struct fuse_file_info *info) {
+  struct tree_dir data;
+  int ret = 0;
+  data.filler_callback = filler;
+  data.entry_offset = offset;
+  data.buf = buf;
+  data.error = 0;
+  data.req_path = path;
   fuse_debug("tft_readdir called : %s\n", path);
-  tree_readdir(tft_handle->hpool, path);
+  ret = tree_readdir(tft_handle->hpool, path, &data);
+
+  switch (ret) {
+    case -1:
+      return -EHOSTUNREACH;
+    case -2:
+      return -EBADMSG;
+    case 200:
+      break;
+    case 401:
+      return -EACCES;
+    case 404:
+      return -ENOENT;
+    case 500:
+      return -EBADE;
+  }
+
+  if (data.error != 0) {
+    return -data.error;
+  }
+  return 0;
+}
+
+int tft_releasedir(const char *path, struct fuse_file_info *info) {
+  fuse_debug("tft_releasedir called : %s\n", path);
   return 0;
 }
 
@@ -107,7 +151,7 @@ static struct fuse_operations callbacks = {
   //.removexattr = tft_removexattr,
   .opendir = tft_opendir,
   .readdir = tft_readdir,
-  //.releasedir = tft_releasedir,
+  .releasedir = tft_releasedir,
   //.fsyncdir = tft_fsyncdir,
   .init = tft_init,
   .destroy = tft_destroy,

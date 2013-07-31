@@ -10,6 +10,7 @@
 struct http_result {
   char *effective_url;
   char *buffer;
+  CURLcode result;
 };
 
 struct http_connection {

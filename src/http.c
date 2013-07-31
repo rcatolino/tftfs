@@ -215,6 +215,12 @@ void http_cleanup(struct http_connection *data) {
   free(data);
 }
 
+long http_get_resp_code(struct http_connection* con) {
+  long curl_response;
+  curl_easy_getinfo(con->curl, CURLINFO_RESPONSE_CODE, &curl_response);
+  return curl_response;
+}
+
 static void prepare_request(struct http_connection *con, const char *local_path) {
   char url[strlen(con->root_url) + strlen(local_path) + 1];
   url[0] = '\0';
@@ -226,7 +232,8 @@ static void prepare_request(struct http_connection *con, const char *local_path)
   curl_easy_setopt(con->curl, CURLOPT_HTTPGET, 1);
 }
 
-struct http_connection *post(struct connection_pool *pool, const char *action, const char *data) {
+struct http_connection *post(struct connection_pool *pool, const char *action, const char *data,
+                             result_callback callback, void *userdata) {
   struct http_connection *con = acquire_connection(pool);
   // Construct post url :
   int host_length;
@@ -244,10 +251,11 @@ struct http_connection *post(struct connection_pool *pool, const char *action, c
 
   // Set curl options
   curl_easy_setopt(con->curl, CURLOPT_URL, con->last_result.effective_url);
-  curl_easy_setopt(con->curl, CURLOPT_WRITEFUNCTION, writefunction);
+  curl_easy_setopt(con->curl, CURLOPT_WRITEFUNCTION, callback ? callback : writefunction);
+  curl_easy_setopt(con->curl, CURLOPT_WRITEDATA, userdata ? userdata : con->last_result.buffer);
   curl_easy_setopt(con->curl, CURLOPT_POSTFIELDS, data);
   curl_easy_setopt(con->curl, CURLOPT_POST, 1);
-  curl_easy_perform(con->curl);
+  con->last_result.result = curl_easy_perform(con->curl);
   return con;
 }
 
@@ -258,21 +266,6 @@ struct http_connection *get(struct connection_pool *pool, const char *local_path
   prepare_request(con, local_path);
   curl_easy_perform(con->curl);
   return con;
-}
-
-mode_t get_file_type(struct http_connection *con) {
-  return S_IFDIR;
-}
-
-off_t get_file_size(struct http_connection *con) {
-  double size = 0;
-  curl_easy_getinfo(con->curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &size);
-  if (size == -1) {
-    size = curl_easy_getinfo(con->curl, CURLINFO_SIZE_DOWNLOAD, &size);
-  }
-
-  fuse_debug("get_file_size : %ld\n", (off_t)size);
-  return (off_t)size;
 }
 
 void release(struct connection_pool* pool, struct http_connection *con) {
