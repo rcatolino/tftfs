@@ -53,7 +53,6 @@ union curlparam get_option_param(const char * param_name, enum opttype type, GHa
   switch (type) {
     case STRING :
       param.strparam = param_name;
-      debug("option value : %s\n", param_name);
       break;
     case LONG :
       ret = g_hash_table_lookup(params, param_name);
@@ -79,11 +78,10 @@ int invalid_option(const char * opt, GHashTable *options) {
   const char * option_name = opt+2;
   CURLoption * co = g_hash_table_lookup(options, option_name);
   if (co) {
-    debug("found %s\n", option_name);
     return 0;
   }
 
-  debug("not found %s\n", option_name);
+  printf("Warning, unknown option : %s\n", option_name);
   return 1;
 }
 

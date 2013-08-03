@@ -122,7 +122,6 @@ struct connection_pool *http_init(int *argc, char *(*argv[])) {
 
       co = g_hash_table_lookup(options, targv[i]+2);
       assert(co);
-      debug("option name : %s,\n", targv[i]);
       param = get_option_param(targv[i+1], co->type, parameters);
       if (param.longparam == -1) {
         printf("Invalid argument %s for option %s\n", targv[i+1], targv[i]);
@@ -189,13 +188,12 @@ struct connection_pool *http_init(int *argc, char *(*argv[])) {
   data->host = malloc(host_size());
   memcpy(data->host, data->root_url, host_size());
   data->host[host_size() - 1] = '\0';
-  data->last_result.buffer = malloc(DEFAULT_RES_SIZE);
+  data->last_result.callback_userdata = NULL;
   data->last_result.effective_url = NULL;
-  curl_easy_setopt(data->curl, CURLOPT_WRITEDATA, data->last_result.buffer);
+  curl_easy_setopt(data->curl, CURLOPT_WRITEDATA, data->last_result.callback_userdata);
   g_hash_table_unref(parameters);
   g_hash_table_unref(options);
 
-  debug("root_url : %s, root_path : %s, host : %s, host_end : %u, host_size : %ld.\n", data->root_url, data->root_path, data->host, data->host[host_size()-1], host_size());
   return create_pool(data);
 
 err:
@@ -252,7 +250,7 @@ struct http_connection *post(struct connection_pool *pool, const char *action, c
   // Set curl options
   curl_easy_setopt(con->curl, CURLOPT_URL, con->last_result.effective_url);
   curl_easy_setopt(con->curl, CURLOPT_WRITEFUNCTION, callback ? callback : writefunction);
-  curl_easy_setopt(con->curl, CURLOPT_WRITEDATA, userdata ? userdata : con->last_result.buffer);
+  curl_easy_setopt(con->curl, CURLOPT_WRITEDATA, userdata ? userdata : con->last_result.callback_userdata);
   curl_easy_setopt(con->curl, CURLOPT_POSTFIELDS, data);
   curl_easy_setopt(con->curl, CURLOPT_POST, 1);
   con->last_result.result = curl_easy_perform(con->curl);

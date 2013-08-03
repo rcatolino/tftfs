@@ -40,7 +40,7 @@ struct connection_pool *create_pool(struct http_connection *initial) {
     memcpy(pool->queue[i], initial, sizeof(struct http_connection));
     // Update the relevant fields :
     pool->queue[i]->curl = curl_easy_duphandle(initial->curl);
-    pool->queue[i]->last_result.buffer = malloc(DEFAULT_RES_SIZE);
+    pool->queue[i]->last_result.callback_userdata = NULL;
     pool->queue[i]->last_result.effective_url = NULL;
   }
 

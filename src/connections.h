@@ -9,7 +9,7 @@
 
 struct http_result {
   char *effective_url;
-  char *buffer;
+  char *callback_userdata; // UNUSED SO FAR
   CURLcode result;
 };
 
