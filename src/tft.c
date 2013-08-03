@@ -14,7 +14,7 @@
 
 #define TFT_READ_OP "op=ls&path=%s&depth=%d"
 #define TFT_DELETE_OP "op=rm&path=%s"
-#define TFT_CREATE_OP "op=new&path=%s&type=%s"
+#define TFT_CREATE_OP "op=new&type=%s&path=%s"
 
 #define ALL_DONE (block_size*nbblock)
 
@@ -80,6 +80,37 @@ int tree_rm(struct connection_pool *pool, const char *path,
   return (int)ret;
 }
 
+int tree_new(struct connection_pool *pool, const char *path, const char *type,
+             result_callback callback, void *userdata) {
+  int data_size = strlen(path) + strlen(type) + sizeof(TFT_CREATE_OP) - 4;
+  long ret = 0;
+  char *post_data = malloc(data_size);
+  memset(post_data, 0, data_size);
+  if (snprintf(post_data, data_size, TFT_CREATE_OP, type, path) >= data_size) {
+    fuse_debug("Buffer error in tree_rm()\n");
+    assert(0);
+  }
+
+  struct http_connection *con = post(pool, "fs", post_data, callback, userdata);
+  ret = http_get_resp_code(con);
+  if (con->last_result.result == 23) {
+    // There was an error in the parsing callback
+    ret = -2;
+  } else if (con->last_result.result != 0) {
+    // Test the network layer result
+    fuse_debug("Curl error : %d\n", con->last_result.result);
+    ret = -1;
+  } else if (ret != 200) {
+    // Test the application layer result
+    fuse_debug("HTTP Error %ld\n", ret);
+  }
+
+  release(pool, con);
+  free(post_data);
+  return (int)ret;
+}
+
+
 void fill_stat(struct stat *stbuf, const char *type, time_t mtime, size_t size) {
   if (strncmp(type, "dir", 3) == 0) {
     stbuf->st_mode |= S_IFDIR;
@@ -104,7 +135,7 @@ size_t getattr_callback(char *buffer, size_t block_size, size_t nbblock, void *u
   size_t size;
   int ret;
 
-  //fuse_debug("Answer from getattr request %ld bytes : %.*s\n", ALL_DONE, (int)ALL_DONE, buffer);
+  fuse_debug("Answer from getattr request %ld bytes : %.*s\n", ALL_DONE, (int)ALL_DONE, buffer);
   if (ALL_DONE == 0) {
     return 0;
   }
@@ -355,8 +386,51 @@ size_t unlink_callback(char *buffer, size_t block_size, size_t nbblock, void *us
   return ALL_DONE;
 }
 
+size_t default_callback(char *buffer, size_t block_size, size_t nbblock, void *userdata) {
+  // This callback just check for errors, and returns them in the data buffer
+  // wich should be able to hold an int
+  int *ret = (int *)userdata;
+  size_t buf_size = block_size*nbblock;
+  json_t *result;
+  int err;
+
+  fuse_debug("Answer from default %ld bytes : %.*s\n", buf_size, (int)buf_size, buffer);
+  if (buf_size == 0) {
+    return 0;
+  }
+
+  err = load_buffer(buffer, buf_size, &result, "unlink_callback");
+  json_decref(result);  // We don't really care about the data, just about the error code.
+  if (err > 0) {
+    // The request wasn't valid.
+    *ret = err;
+  } else if (err == -1) {
+    // The communication failed.
+    *ret = -1;
+    return 0;
+  } else if (err == -2) {
+    // Incomplete answer (this shouldn't happen often).
+    *ret = EFBIG;
+  } else {
+    // Done.
+    *ret = 0;
+  }
+
+  return ALL_DONE;
+}
+
 int tree_getattr(struct connection_pool *pool, const char *path, struct stat *buff) {
   int ret = tree_read(pool, path, -1, getattr_callback, buff);
+  return ret;
+}
+
+int tree_mkdir(struct connection_pool *pool, const char *path, int *result) {
+  int ret = tree_new(pool, path, "dir", default_callback, result);
+  return ret;
+}
+
+int tree_create(struct connection_pool *pool, const char *path, int *result) {
+  int ret = tree_new(pool, path, "", default_callback, result);
   return ret;
 }
 

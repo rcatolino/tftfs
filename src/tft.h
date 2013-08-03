@@ -35,8 +35,12 @@ int tree_read(struct connection_pool *pool, const char *path, int depth,
               result_callback callback, void *userdata);
 int tree_rm(struct connection_pool *pool, const char *path,
             result_callback callback, void *userdata);
+int tree_new(struct connection_pool *pool, const char *path, const char *type,
+             result_callback callback, void *userdata);
 
 // File system level operations
+int tree_create(struct connection_pool *pool, const char *path, int *result);
+int tree_mkdir(struct connection_pool *pool, const char *path, int *result);
 int tree_unlink(struct connection_pool *pool, const char *path, int *result);
 int tree_getattr(struct connection_pool *pool, const char *path, struct stat *buff);
 int tree_readdir(struct connection_pool *pool, const char *path, struct tree_dir *data);

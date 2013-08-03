@@ -66,7 +66,45 @@ int tft_getattr(const char *path, struct stat * buf) {
   return 0;
 }
 
-int tft_mkdir(const char *path, mode_t mode);
+int tft_create(const char *path, mode_t mode, struct fuse_file_info *info) {
+  struct file_handle *fh;
+  int result = 0;
+  int ret = 0;
+  fuse_debug("tft_create called\n");
+
+  // The mode is ignored since tree can't handle any perms yet.
+  ret = translate_treecode(tree_create(tft_handle->hpool, path, &result));
+  if (ret != 0) {
+    fuse_debug("mkdir connection failed with %d\n", ret);
+    return ret;
+  } else if (result != 0) {
+    return -result;
+  }
+
+  // Let's allocate a file handle, but not the internal buffer as long
+  // as the file is empty.
+  fh = malloc(sizeof(struct file_handle));
+  fh->buf = NULL;
+  fh->size = 0;
+  fh->error_code = 0;
+  fh->path = path;
+  memset(&fh->json, 0, sizeof(struct json_buf));
+  info->fh = (uint64_t) fh;
+  return 0;
+}
+
+int tft_mkdir(const char *path, mode_t mode) {
+  int result = 0;
+  // The mode is ignored since tree can't handle any perms yet.
+  int ret = translate_treecode(tree_mkdir(tft_handle->hpool, path, &result));
+  if (ret != 0) {
+    fuse_debug("mkdir connection failed with %d\n", ret);
+    return ret;
+  }
+
+  fuse_debug("mkdir connection ended with %d\n", result);
+  return -result;
+}
 
 int tft_unlink(const char *path) {
   int result = 0;
@@ -80,11 +118,6 @@ int tft_unlink(const char *path) {
 
 int tft_rmdir(const char *path) {
   return tft_unlink(path);
-}
-
-int tft_create(const char *path, mode_t mode, struct fuse_file_info *info) {
-  fuse_debug("tft_open called\n");
-  return -EROFS; // TODO: remove when we support writing.
 }
 
 int tft_open(const char *path, struct fuse_file_info *info) {
@@ -129,10 +162,10 @@ int tft_read(const char *path, char *buf, size_t buf_size, off_t offset,
   }
 
   fuse_debug("tft_read called\n");
-  assert(fh && fh->buf);
+  assert(fh);
   data_left = fh->size - offset;
-  if (data_left <= 0) {
-    // End-of-file
+  if (!fh->buf || data_left <= 0) {
+    // Empty file or end-of-file
     return 0;
   }
 
@@ -145,8 +178,8 @@ int tft_read(const char *path, char *buf, size_t buf_size, off_t offset,
 int tft_release(const char *path, struct fuse_file_info *info) {
   struct file_handle *fh = (struct file_handle *)info->fh;
   fuse_debug("tft_release called\n");
-  assert(fh && fh->buf);
-  free(fh->buf);
+  assert(fh);
+  if (fh) free(fh->buf);
   free(fh);
   return 0; // ignored
 }
@@ -220,7 +253,7 @@ static struct fuse_operations callbacks = {
   //.readlink = tft_readlink,
   //.getdir = tft_getdir,
   //.mknod = tft_mknod,
-  //.mkdir = tft_mkdir,
+  .mkdir = tft_mkdir,
   .unlink = tft_unlink,
   .rmdir = tft_rmdir,
   //.symlink = tft_symlink,
