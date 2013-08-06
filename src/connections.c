@@ -57,11 +57,13 @@ error_malloc_pool:
 }
 
 void free_pool(struct connection_pool *pool) {
-  for (int i = 0; i<pool->pool_size; i++) {
-    if (!pool->queue[i]) {
-      continue;
-    }
+  // All the connection must have been released when this is called
+  // otherwise it will cause memory leaks.
+  assert(pool->available_connections == pool->pool_size);
 
+  free(pool->queue[0]->host);
+  free(pool->queue[0]->root_url);
+  for (int i = 0; i<pool->pool_size; i++) {
     http_cleanup(pool->queue[i]);
   }
 
@@ -91,6 +93,7 @@ struct http_connection *acquire_connection(struct connection_pool *pool) {
 }
 
 void release_connection(struct http_connection *con, struct connection_pool *pool) {
+  assert(con);
   pthread_mutex_lock(&pool->cond_mutex);
 
   // Move this connection to the pool

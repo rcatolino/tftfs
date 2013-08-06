@@ -210,6 +210,7 @@ void http_cleanup(struct http_connection *data) {
   }
 
   curl_easy_cleanup(data->curl);
+  if (data->last_result.effective_url) free(data->last_result.effective_url);
   free(data);
 }
 
@@ -219,32 +220,28 @@ long http_get_resp_code(struct http_connection* con) {
   return curl_response;
 }
 
-static void prepare_request(struct http_connection *con, const char *local_path) {
-  char url[strlen(con->root_url) + strlen(local_path) + 1];
-  url[0] = '\0';
-  strcat(strcat(url, con->root_url), local_path);
-  fuse_debug("Preparing request to %s\n", url);
-  // TODO : make several handles for simultaneous requests
-  curl_easy_setopt(con->curl, CURLOPT_URL, url);
-  curl_easy_setopt(con->curl, CURLOPT_WRITEFUNCTION, writefunction);
-  curl_easy_setopt(con->curl, CURLOPT_HTTPGET, 1);
+void make_action_url(struct http_connection *con, const char *action) {
+  int host_length = strlen(con->host);
+  int url_size = strlen(action) + host_length + 3;
+
+  assert(action);
+  if (con->last_result.effective_url) {
+    con->last_result.effective_url = realloc(con->last_result.effective_url, url_size);
+  } else {
+    con->last_result.effective_url = malloc(url_size);
+  }
+
+  memset(con->last_result.effective_url, 0, url_size);
+  strcat(con->last_result.effective_url, con->host);
+  strcat(con->last_result.effective_url, "/$");
+  strcat(con->last_result.effective_url, action);
 }
 
 struct http_connection *post(struct connection_pool *pool, const char *action, const char *data,
                              result_callback callback, void *userdata) {
   struct http_connection *con = acquire_connection(pool);
   // Construct post url :
-  int host_length;
-  host_length = strlen(con->host);
-  if (con->last_result.effective_url) {
-    free(con->last_result.effective_url);
-  }
-
-  con->last_result.effective_url = malloc(strlen(action) + host_length + 3);
-  memset(con->last_result.effective_url, 0, strlen(action) + host_length + 3);
-  strcat(con->last_result.effective_url, con->host);
-  strcat(con->last_result.effective_url, "/$");
-  strcat(con->last_result.effective_url, action);
+  make_action_url(con, action);
   fuse_debug("sending %s to %s.\n", data, con->last_result.effective_url);
 
   // Set curl options
@@ -254,15 +251,6 @@ struct http_connection *post(struct connection_pool *pool, const char *action, c
   curl_easy_setopt(con->curl, CURLOPT_POSTFIELDS, data);
   curl_easy_setopt(con->curl, CURLOPT_POST, 1);
   con->last_result.result = curl_easy_perform(con->curl);
-  return con;
-}
-
-struct http_connection *get(struct connection_pool *pool, const char *local_path) {
-  struct http_connection *con = acquire_connection(pool); // May block until a connection is
-                                                          // available. This connection must be
-                                                          // released to the pool using release()
-  prepare_request(con, local_path);
-  curl_easy_perform(con->curl);
   return con;
 }
 

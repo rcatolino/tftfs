@@ -12,9 +12,10 @@
 #include "http.h"
 #include "tft.h"
 #include "utils.h"
+#include "websocket.h"
 
 int translate_treecode(int code) {
-  // The validity of any translation between an underlying network/http 
+  // The validity of any translation between an underlying network/http
   // error to a filesystem error is questionable, at best. These could be
   // widely misinterpreted by the user, eg returning EACCES on http/401 means
   // that we have to authenticate (typically via the http-auth option) to
@@ -240,12 +241,15 @@ int tft_releasedir(const char *path, struct fuse_file_info *info) {
 }
 
 void *tft_init(struct fuse_conn_info *conn) {
-  fuse_debug("tft_init called\n");
+  fuse_debug("tft_init called, trying a websocket upgrade\n");
+  ws_close(ws_upgrade(tft_handle->hpool), tft_handle->hpool);
   return tft_handle;
 }
 
 void tft_destroy(void *buff) {
   fuse_debug("tft_destroy called\n");
+  free_pool(tft_handle->hpool);
+  free(tft_handle);
 }
 
 static struct fuse_operations callbacks = {
