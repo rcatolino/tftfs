@@ -16,8 +16,6 @@
 #define TFT_DELETE_OP "op=rm&path=%s"
 #define TFT_CREATE_OP "op=new&type=%s&path=%s"
 
-#define ALL_DONE (block_size*nbblock)
-
 int tree_read(struct connection_pool *pool, const char *path, int depth,
               result_callback callback, void *userdata) {
   int data_size = strlen(path) + sizeof(TFT_READ_OP) + 5 - 4;
@@ -129,18 +127,19 @@ void fill_stat(struct stat *stbuf, const char *type, time_t mtime, size_t size) 
 
 size_t getattr_callback(char *buffer, size_t block_size, size_t nbblock, void *userdata) {
   struct stat *stbuf = (struct stat *)userdata;
+  size_t buf_size = block_size*nbblock;
   json_t *files;
   const char *type;
   time_t mtime;
   size_t size;
   int ret;
 
-  //fuse_debug("Answer from getattr request %ld bytes : %.*s\n", ALL_DONE, (int)ALL_DONE, buffer);
-  if (ALL_DONE == 0) {
+  //fuse_debug("Answer from getattr request %ld bytes : %.*s\n", buf_size, (int)buf_size, buffer);
+  if (buf_size == 0) {
     return 0;
   }
 
-  switch (ret = load_response(buffer, ALL_DONE, &files, "getattr_callback")) {
+  switch (ret = load_response(buffer, buf_size, &files, "getattr_callback")) {
     case -1:
       return 0;
     case -2:
@@ -150,7 +149,7 @@ size_t getattr_callback(char *buffer, size_t block_size, size_t nbblock, void *u
     default:
       // No such file
       stbuf->st_size = -ret;
-      return ALL_DONE;
+      return buf_size;
   }
 
   stbuf->st_mode = 0;
@@ -169,7 +168,7 @@ size_t getattr_callback(char *buffer, size_t block_size, size_t nbblock, void *u
 
   fill_stat(stbuf, type, mtime, size);
   json_decref(files);
-  return ALL_DONE;
+  return buf_size;
 
 err:
   json_decref(files);
@@ -204,7 +203,7 @@ size_t readdir_callback(char *buffer, size_t block_size, size_t nbblock, void *u
   json_t *files;
   int ret = 0;
 
-  //fuse_debug("Answer from readdir request %ld bytes : %.*s\n", buf_size, (int)ALL_DONE, buffer);
+  //fuse_debug("Answer from readdir request %ld bytes : %.*s\n", buf_size, (int)buf_size, buffer);
   if (buf_size == 0) {
     return 0;
   }
@@ -284,7 +283,7 @@ size_t readcontent_callback(char *buffer, size_t block_size, size_t nbblock, voi
   const char *content;
   int ret = 0;
 
-  //fuse_debug("Answer from load_file request %ld bytes : %.*s\n", buf_size, (int)ALL_DONE, buffer);
+  //fuse_debug("Answer from load_file request %ld bytes : %.*s\n", buf_size, (int)buf_size, buffer);
   if (buf_size == 0) {
     return 0;
   }
@@ -383,7 +382,7 @@ size_t unlink_callback(char *buffer, size_t block_size, size_t nbblock, void *us
     *ret = 0;
   }
 
-  return ALL_DONE;
+  return buf_size;
 }
 
 size_t default_callback(char *buffer, size_t block_size, size_t nbblock, void *userdata) {
@@ -416,7 +415,7 @@ size_t default_callback(char *buffer, size_t block_size, size_t nbblock, void *u
     *ret = 0;
   }
 
-  return ALL_DONE;
+  return buf_size;
 }
 
 int tree_getattr(struct connection_pool *pool, const char *path, struct stat *buff) {
