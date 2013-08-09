@@ -102,6 +102,8 @@ struct http_connection *ws_upgrade(struct connection_pool *pool) {
   delete_key(ws_key);
   curl_easy_setopt(con->curl, CURLOPT_HEADERFUNCTION, NULL);
   curl_easy_setopt(con->curl, CURLOPT_HTTPHEADER, NULL);
+  curl_easy_setopt(con->curl, CURLOPT_HEADERDATA, NULL);
+  curl_easy_setopt(con->curl, CURLOPT_HEADER, 0);
   curl_slist_free_all(headers);
   return con;
 }

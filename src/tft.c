@@ -135,7 +135,7 @@ size_t getattr_callback(char *buffer, size_t block_size, size_t nbblock, void *u
   size_t size;
   int ret;
 
-  fuse_debug("Answer from getattr request %ld bytes : %.*s\n", ALL_DONE, (int)ALL_DONE, buffer);
+  //fuse_debug("Answer from getattr request %ld bytes : %.*s\n", ALL_DONE, (int)ALL_DONE, buffer);
   if (ALL_DONE == 0) {
     return 0;
   }
