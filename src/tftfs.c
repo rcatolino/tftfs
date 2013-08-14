@@ -44,7 +44,7 @@ int translate_treecode(int code) {
 int tft_getattr(const char *path, struct stat * buf) {
   // TODO: cache the result for a few sec
   int ret;
-  fuse_debug("tft_getattr called, stat : %p, pid : %d, thread id : %lu\n", buf, getpid(), pthread_self());
+  // fuse_debug("tft_getattr called, stat : %p, pid : %d, thread id : %lu\n", buf, getpid(), pthread_self());
   // Prefill the stat struct with the values not set in the tree fs.
   buf->st_nlink = 1; // No hardlinking on tft IIRC.
   buf->st_uid = getuid(); // No owner either (so far).
@@ -197,7 +197,7 @@ int tft_flush(const char *path, struct fuse_file_info *info) {
 }
 
 int tft_opendir(const char *path, struct fuse_file_info *info) {
-  fuse_debug("tft_opendir called, path : %s, info : %p\n", path, info);
+  // fuse_debug("tft_opendir called, path : %s, info : %p\n", path, info);
   return 0;
 }
 
@@ -211,7 +211,7 @@ int tft_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
   data.error = 0;
   data.req_path = path;
   memset(&data.json, 0, sizeof(struct json_buf));
-  fuse_debug("tft_readdir called : %s\n", path);
+  //fuse_debug("tft_readdir called : %s\n", path);
   ret = tree_readdir(tft_handle->hpool, path, &data);
 
   switch (ret) {
@@ -236,13 +236,14 @@ int tft_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 }
 
 int tft_releasedir(const char *path, struct fuse_file_info *info) {
-  fuse_debug("tft_releasedir called : %s\n", path);
+  //fuse_debug("tft_releasedir called : %s\n", path);
   return 0;
 }
 
 void *tft_init(struct fuse_conn_info *conn) {
   fuse_debug("tft_init called, trying a websocket upgrade\n");
   ws_close(ws_upgrade(tft_handle->hpool), tft_handle->hpool);
+  assert(0);
   return tft_handle;
 }
 

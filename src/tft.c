@@ -260,7 +260,7 @@ size_t readdir_callback(char *buffer, size_t block_size, size_t nbblock, void *u
     // Get the filename component of the path :
     name = strrchr(path, '/');
     name = name ? name + 1 : path;
-    fuse_debug("readdir, direntry %s : %s\n", path, name);
+    //fuse_debug("readdir, direntry %s : %s\n", path, name);
     dir->filler_callback(dir->dirent_buf, name, &stbuf, 0);
   }
 

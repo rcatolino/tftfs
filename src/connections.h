@@ -26,6 +26,7 @@ struct http_connection {
                    // The same buffer as root_url's is used.
   struct http_result last_result;
   enum con_mode mode;
+  char *ws_key;
 };
 
 struct connection_pool {

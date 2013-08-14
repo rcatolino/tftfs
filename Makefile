@@ -4,8 +4,8 @@ AR:=ar
 CC:=gcc #Compiler
 EDL:=gcc #Linker
 ARFLAGS:=rcs
-CCFLAGS:=-Wall -g -std=gnu99 `pkg-config fuse libcurl glib-2.0 jansson --cflags` #Compiler options
-EDLFLAGS:=-Wall -g `pkg-config fuse glib-2.0 jansson --libs` #Linker options
+CCFLAGS:=-Wall -g -std=gnu99 `pkg-config fuse libcurl glib-2.0 jansson openssl --cflags` #Compiler options
+EDLFLAGS:=-Wall -g `pkg-config fuse glib-2.0 jansson openssl --libs` #Linker options
 EXE:=$(OBJDIR)/tftfs
 DEFINES:=-D DEBUG #Preprocessor definitions
 ECHO:=@echo

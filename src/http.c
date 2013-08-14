@@ -242,7 +242,7 @@ struct http_connection *post(struct connection_pool *pool, const char *action, c
   struct http_connection *con = acquire_connection(pool);
   // Construct post url :
   make_action_url(con, action);
-  fuse_debug("sending %s to %s.\n", data, con->last_result.effective_url);
+  //fuse_debug("sending %s to %s.\n", data, con->last_result.effective_url);
 
   // Set curl options
   curl_easy_setopt(con->curl, CURLOPT_URL, con->last_result.effective_url);
